@@ -1,0 +1,17 @@
+venv/
+# Python
+__pycache__/
+*.pyc
+
+# Cache
+.cache/
+
+# Data outputs
+data/embeddings/
+data/logs/
+data/visualizations/
+data/chunks/
+
+# OS
+.DS_Store
+Thumbs.db
