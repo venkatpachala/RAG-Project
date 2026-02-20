@@ -1,0 +1,13 @@
+[
+  {
+    "file_name": "sample.pdf",
+    "file_path": "data\\sample.pdf",
+    "file_size_bytes": 193816,
+    "file_hash": "2e195eed17f0b564c680fd7ca41e6301",
+    "load_timestamp": "2026-02-20T10:39:35.549666",
+    "total_pages": 11,
+    "pages_extracted": 11,
+    "pages_skipped": 0,
+    "extraction_errors": 0
+  }
+]
