@@ -1,177 +1,223 @@
 """
-PDF Processing Pipeline with Embeddings
-========================================
-Complete pipeline: Load → Chunk → Embed → Save
+PDF Pipeline Module
+====================
+Handles: PDF → Text → Chunks → Embeddings → ChromaDB
 """
 
 from pathlib import Path
 import logging
+import time
+from datetime import datetime
 
-# Absolute imports
 from src.rag.loader import SimplePDFLoader
 from src.rag.chunker import TextChunker
 from src.rag.embedder import EmbeddingGenerator
+from src.rag.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
 
 class PDFPipeline:
-    """Complete PDF processing pipeline: Load → Chunk → Embed → Save"""
-    
-    def __init__(
-        self,
-        data_folder,
-        chunk_size=1000,
-        chunk_overlap=200,
-        embedding_model='fast',
-        generate_embeddings=True
-    ):
+    """Complete RAG pipeline: PDF → Text → Chunks → Embeddings → ChromaDB"""
+
+    def __init__(self, data_folder, chunk_size=512, chunk_overlap=50,
+                 embedding_model='fast', generate_embeddings=True,
+                 store_vectors=True, collection_name='knowledge_base'):
         """
-        Initialize pipeline
-        
+        Initialize the pipeline
+
         Args:
-            data_folder: Folder containing PDFs
-            chunk_size: Size of each chunk in characters
-            chunk_overlap: Overlap between chunks in characters
+            data_folder: Path to folder containing PDFs
+            chunk_size: Characters per chunk
+            chunk_overlap: Overlap between chunks
             embedding_model: 'fast', 'balanced', or 'best'
             generate_embeddings: Whether to generate embeddings
+            store_vectors: Whether to store in ChromaDB
+            collection_name: ChromaDB collection name
         """
         self.data_folder = Path(data_folder)
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.embedding_model = embedding_model
+        self.generate_embeddings = generate_embeddings
+        self.store_vectors = store_vectors
+        self.collection_name = collection_name
+
+        # Output folders
         self.chunks_folder = self.data_folder / "chunks"
         self.embeddings_folder = self.data_folder / "embeddings"
-        self.logs_folder = self.data_folder / "logs"
-        
-        # Create folders
-        self.chunks_folder.mkdir(parents=True, exist_ok=True)
-        self.embeddings_folder.mkdir(parents=True, exist_ok=True)
-        self.logs_folder.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize components
-        self.loader = SimplePDFLoader(self.data_folder)
-        self.chunker = TextChunker(chunk_size, chunk_overlap)
-        
-        # Initialize embedder if needed
-        self.generate_embeddings = generate_embeddings
-        self.embedder = None
-        
-        if generate_embeddings:
-            logger.info(f"🧠 Initializing embedder with model: {embedding_model}")
-            self.embedder = EmbeddingGenerator(model_name=embedding_model)
-        
-        logger.info(f"🔧 Pipeline initialized")
-        logger.info(f"   📁 Data folder: {self.data_folder}")
-        logger.info(f"   📁 Chunks folder: {self.chunks_folder}")
-        if generate_embeddings:
-            logger.info(f"   📁 Embeddings folder: {self.embeddings_folder}")
-        logger.info(f"   🧠 Generate embeddings: {generate_embeddings}")
-    
+        self.vectordb_folder = self.data_folder / "chroma_db"
+
+        logger.info(f"📋 Pipeline Configuration:")
+        logger.info(f"   📂 Data folder:    {self.data_folder}")
+        logger.info(f"   ✂️  Chunk size:     {chunk_size}")
+        logger.info(f"   🔗 Chunk overlap:  {chunk_overlap}")
+        logger.info(f"   🧠 Embeddings:     {embedding_model if generate_embeddings else 'Disabled'}")
+        logger.info(f"   🗄️  Vector Store:   {'Enabled' if store_vectors else 'Disabled'}")
+
     def run(self):
-        """
-        Run the complete pipeline
-        
-        Returns:
-            Dictionary with results or None if failed
-        """
-        logger.info("="*60)
-        logger.info("🚀 STARTING PIPELINE")
-        logger.info("="*60)
-        
-        # ================================================================
-        # STEP 1: Load PDFs
-        # ================================================================
-        logger.info("\n📥 STEP 1: Loading PDFs...")
-        all_pdf_data = self.loader.load_all_pdfs()
-        
-        if not all_pdf_data:
-            logger.error("❌ No PDFs loaded!")
-            return None
-        
-        logger.info(f"✅ Loaded {len(all_pdf_data)} PDF(s)")
-        
-        # ================================================================
-        # STEP 2: Chunk PDFs
-        # ================================================================
-        logger.info("\n✂️ STEP 2: Chunking text...")
-        all_chunks = self.chunker.chunk_multiple_pdfs(all_pdf_data)
-        
-        total_chunks = sum(len(c) for c in all_chunks.values())
-        logger.info(f"✅ Created {total_chunks} chunks from {len(all_chunks)} PDF(s)")
-        
-        # ================================================================
-        # STEP 3: Save chunks
-        # ================================================================
-        logger.info("\n💾 STEP 3: Saving chunks...")
-        self.chunker.save_chunks(all_chunks, self.chunks_folder)
-        
-        logger.info(f"✅ Chunks saved to: {self.chunks_folder}")
-        
-        # ================================================================
-        # STEP 4: Generate embeddings (if enabled)
-        # ================================================================
-        embedded_data = None
-        
-        if self.generate_embeddings and self.embedder:
-            logger.info("\n🧠 STEP 4: Generating embeddings...")
-            
-            try:
-                # Load model first
-                logger.info("   Loading embedding model...")
-                self.embedder.load_model()
-                
-                # Generate embeddings for all chunks
-                embedded_data = self.embedder.embed_all_chunks(all_chunks)
-                
-                # Save embeddings to disk
-                logger.info("\n   Saving embeddings...")
-                self.embedder.save_embeddings(embedded_data, self.embeddings_folder)
-                
-                logger.info(f"✅ Embeddings saved to: {self.embeddings_folder}")
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to generate embeddings: {e}")
-                logger.exception("Full error traceback:")
-                logger.warning("⚠️  Continuing without embeddings...")
-                embedded_data = None
-        else:
-            logger.info("\n⏭️  STEP 4: Skipping embeddings (disabled)")
-        
-        # ================================================================
-        # Calculate statistics
-        # ================================================================
-        total_pages = sum(d['metadata']['total_pages'] for d in all_pdf_data)
-        total_chars = sum(d['metadata']['total_characters'] for d in all_pdf_data)
-        total_chunks = sum(len(c) for c in all_chunks.values())
-        
-        logger.info("\n" + "="*60)
-        logger.info("📊 PIPELINE COMPLETE")
-        logger.info("="*60)
-        logger.info(f"   📚 PDFs processed: {len(all_pdf_data)}")
-        logger.info(f"   📄 Total pages: {total_pages}")
-        logger.info(f"   ✂️  Total chunks: {total_chunks}")
-        logger.info(f"   🔤 Total characters: {total_chars:,}")
-        
-        if embedded_data:
-            total_embeddings = sum(len(d['chunks']) for d in embedded_data.values())
-            logger.info(f"   🧠 Embeddings: ✅ Generated ({total_embeddings} vectors)")
-        else:
-            logger.info(f"   🧠 Embeddings: ⏭️  Skipped")
-        
-        logger.info("="*60)
-        
-        # ================================================================
-        # Return results
-        # ================================================================
-        return {
-            'pdf_data': all_pdf_data,
-            'chunks': all_chunks,
-            'embeddings': embedded_data,
-            'chunks_folder': self.chunks_folder,
-            'embeddings_folder': self.embeddings_folder if self.generate_embeddings else None,
-            'stats': {
-                'total_pdfs': len(all_pdf_data),
-                'total_pages': total_pages,
-                'total_chunks': total_chunks,
-                'total_characters': total_chars,
-                'embeddings_generated': embedded_data is not None
-            }
+        """Run the complete pipeline"""
+        pipeline_start = time.time()
+
+        logger.info(f"")
+        logger.info(f"{'='*60}")
+        logger.info(f"🚀 STARTING RAG PIPELINE")
+        logger.info(f"{'='*60}")
+
+        results = {
+            'chunks': {},
+            'embeddings': {},
+            'vector_store': {},
+            'stats': {},
+            'chunks_folder': str(self.chunks_folder),
+            'embeddings_folder': None,
+            'vectordb_folder': None,
         }
+
+        # ================================================================
+        # STAGE 1: PDF EXTRACTION
+        # ================================================================
+        logger.info(f"\n{'─'*60}")
+        logger.info(f"📖 STAGE 1: PDF EXTRACTION")
+        logger.info(f"{'─'*60}")
+
+        loader = SimplePDFLoader(data_folder=self.data_folder)
+        all_pdf_data = loader.load_all_pdfs()
+
+        if not all_pdf_data:
+            logger.error("❌ No PDFs loaded. Stopping pipeline.")
+            return None
+
+        # Calculate total pages
+        total_pages = sum(
+            d['metadata']['total_pages'] for d in all_pdf_data
+        )
+        logger.info(f"✅ Loaded {len(all_pdf_data)} PDF(s), {total_pages} pages total")
+
+        # ================================================================
+        # STAGE 2: CHUNKING
+        # ================================================================
+        logger.info(f"\n{'─'*60}")
+        logger.info(f"✂️  STAGE 2: CHUNKING")
+        logger.info(f"{'─'*60}")
+
+        chunker = TextChunker(
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap
+        )
+
+        # chunk_multiple_pdfs expects list of pdf_data dicts
+        all_chunks = chunker.chunk_multiple_pdfs(all_pdf_data)
+
+        total_chunks = sum(len(chunks) for chunks in all_chunks.values())
+        total_characters = sum(
+            sum(c['length'] for c in chunks)
+            for chunks in all_chunks.values()
+        )
+
+        results['chunks'] = all_chunks
+
+        # Save chunks to disk
+        chunker.save_chunks(all_chunks, self.chunks_folder)
+        logger.info(f"✅ {total_chunks} chunks created and saved")
+
+        # ================================================================
+        # STAGE 3: EMBEDDINGS
+        # ================================================================
+        embedded_data = {}
+
+        if self.generate_embeddings:
+            logger.info(f"\n{'─'*60}")
+            logger.info(f"🧠 STAGE 3: EMBEDDING GENERATION")
+            logger.info(f"{'─'*60}")
+
+            embedder = EmbeddingGenerator(
+                model_name=self.embedding_model,
+                batch_size=32
+            )
+            embedder.load_model()
+
+            # embed_all_chunks expects Dict[str, List[Dict]]
+            # all_chunks is already in that format: {filename: [chunks]}
+            embedded_data = embedder.embed_all_chunks(all_chunks)
+
+            # Save embeddings to disk
+            embedder.save_embeddings(embedded_data, self.embeddings_folder)
+
+            results['embeddings'] = embedded_data
+            results['embeddings_folder'] = str(self.embeddings_folder)
+
+            logger.info(f"✅ Embeddings generated and saved")
+
+        else:
+            logger.info(f"\n⏭️  STAGE 3: SKIPPED (embeddings disabled)")
+
+        # ================================================================
+        # STAGE 4: VECTOR STORE (ChromaDB)
+        # ================================================================
+        if self.store_vectors and embedded_data:
+            logger.info(f"\n{'─'*60}")
+            logger.info(f"🗄️  STAGE 4: VECTOR STORAGE (ChromaDB)")
+            logger.info(f"{'─'*60}")
+
+            try:
+                vector_store = VectorStore(
+                    persist_directory=str(self.vectordb_folder),
+                    collection_name=self.collection_name
+                )
+                vector_store.connect()
+
+                # Store all embedded data
+                store_stats = vector_store.store_embedded_data(embedded_data)
+
+                results['vector_store'] = store_stats
+                results['vectordb_folder'] = str(self.vectordb_folder)
+
+                logger.info(f"✅ Vectors stored in ChromaDB")
+
+            except Exception as e:
+                logger.error(f"❌ Vector storage failed: {e}", exc_info=True)
+                results['vector_store'] = {'error': str(e)}
+
+        elif self.store_vectors and not embedded_data:
+            logger.warning(
+                "⚠️  Skipping vector storage — no embeddings generated"
+            )
+            logger.warning(
+                "   Enable embeddings with generate_embeddings=True"
+            )
+
+        else:
+            logger.info(f"\n⏭️  STAGE 4: SKIPPED (vector store disabled)")
+
+        # ================================================================
+        # COMPILE STATISTICS
+        # ================================================================
+        pipeline_time = time.time() - pipeline_start
+
+        results['stats'] = {
+            'total_pdfs': len(all_pdf_data),
+            'total_pages': total_pages,
+            'total_chunks': total_chunks,
+            'total_characters': total_characters,
+            'embeddings_generated': bool(embedded_data),
+            'vectors_stored': bool(
+                results.get('vector_store', {}).get('total_stored')
+            ),
+            'vector_count': results.get(
+                'vector_store', {}
+            ).get('total_in_collection', 0),
+            'pipeline_time': pipeline_time,
+        }
+
+        logger.info(f"\n{'='*60}")
+        logger.info(f"✅ PIPELINE COMPLETE in {pipeline_time:.2f}s")
+        logger.info(f"{'='*60}")
+        logger.info(f"   📚 PDFs:       {len(all_pdf_data)}")
+        logger.info(f"   📄 Pages:      {total_pages}")
+        logger.info(f"   ✂️  Chunks:     {total_chunks}")
+        logger.info(f"   🧠 Embeddings: {'✅' if embedded_data else '⏭️'}")
+        logger.info(f"   🗄️  Vectors:    {'✅' if results['stats']['vectors_stored'] else '⏭️'}")
+        logger.info(f"{'='*60}")
+
+        return results

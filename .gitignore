@@ -1,17 +1,49 @@
+# Virtual environment
 venv/
-# Python
+env/
+.venv/
+
+# Python bytecode
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
 # Cache
 .cache/
 
-# Data outputs
+# Data outputs (generated at runtime)
 data/embeddings/
 data/logs/
 data/visualizations/
 data/chunks/
+data/chroma_db/
+data/*.pdf
 
-# OS
+# Vector DB
+vector_db/
+
+# Uploads
+uploads/
+
+# OS files
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+
+# Distribution & builds
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/

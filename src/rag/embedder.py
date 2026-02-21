@@ -21,9 +21,9 @@ class EmbeddingGenerator:
     
     # Available models (sorted by speed/quality)
     MODELS = {
-        'fast': 'all-MiniLM-L6-v2',           # Fast, 384 dims
-        'balanced': 'all-mpnet-base-v2',      # Balanced, 768 dims
-        'best': 'all-distilroberta-v1',       # Best quality, 768 dims
+        'fast': 'all-MiniLM-L6-v2',           
+        'balanced': 'all-mpnet-base-v2',      
+        'best': 'all-distilroberta-v1',       
     }
     
     def __init__(self, model_name='best', batch_size=32):
