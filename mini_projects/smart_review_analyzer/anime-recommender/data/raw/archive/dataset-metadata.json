@@ -1,0 +1,13 @@
+{
+  "title": "MyAnimeList Top 10k (Normalized)",
+  "id": "senku/mal-top-10k",
+  "licenses": [
+    {
+      "name": "CC-BY-4.0"
+    }
+  ],
+  "description": "Top 10,000 anime scraped from MyAnimeList and normalized into 3NF-friendly CSV tables (anime, entities, genres, characters, staff, voice actors, companies). Includes ISO-8601 normalized dates and Kaggle-ready metadata.",
+  "collaborators": [],
+  "resources": [],
+  "updateFrequency": "weekly"
+}
